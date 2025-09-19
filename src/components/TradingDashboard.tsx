@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -6,18 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { Bell, TrendingUp, TrendingDown, Calculator, Target, AlertCircle } from "lucide-react";
-
-const CURRENCY_PAIRS = [
-  { symbol: "EURUSD", name: "Euro / US Dollar", price: 1.0842, change: 0.0023, changePercent: 0.21, signal: "BUY", strength: 85 },
-  { symbol: "GBPUSD", name: "British Pound / US Dollar", price: 1.2674, change: -0.0012, changePercent: -0.09, signal: "NEUTRAL", strength: 45 },
-  { symbol: "USDJPY", name: "US Dollar / Japanese Yen", price: 149.87, change: 0.45, changePercent: 0.30, signal: "SELL", strength: 78 },
-  { symbol: "XAUUSD", name: "Gold / US Dollar", price: 2034.56, change: 12.34, changePercent: 0.61, signal: "BUY", strength: 92 },
-  { symbol: "GBPJPY", name: "British Pound / Japanese Yen", price: 189.92, change: -0.23, changePercent: -0.12, signal: "NEUTRAL", strength: 38 },
-  { symbol: "EURJPY", name: "Euro / Japanese Yen", price: 162.45, change: 0.78, changePercent: 0.48, signal: "BUY", strength: 73 },
-  { symbol: "BTCUSD", name: "Bitcoin / US Dollar", price: 43247.89, change: 1234.56, changePercent: 2.94, signal: "BUY", strength: 88 },
-  { symbol: "US100", name: "US Tech 100", price: 16842.34, change: -89.23, changePercent: -0.53, signal: "SELL", strength: 67 }
-];
+import { Bell, TrendingUp, TrendingDown, Calculator, Target, AlertCircle, RefreshCw, BellRing } from "lucide-react";
+import { useForexData } from "@/hooks/useForexData";
+import { toast } from "@/components/ui/use-toast";
 
 const getSignalColor = (signal: string) => {
   switch (signal) {
@@ -38,13 +29,90 @@ const getSignalBadgeVariant = (signal: string) => {
 export default function TradingDashboard() {
   const [balance, setBalance] = useState("10000");
   const [riskPercent, setRiskPercent] = useState("2");
+  const [isUpdating, setIsUpdating] = useState(false);
   
+  const { 
+    currencyPairs, 
+    notifications, 
+    loading, 
+    error, 
+    updateForexData, 
+    runAIAnalysis, 
+    markNotificationAsRead,
+    unreadCount 
+  } = useForexData();
+
   // Focus on top 2 pairs with highest signal strength
-  const topPairs = CURRENCY_PAIRS
+  const topPairs = currencyPairs
     .sort((a, b) => b.strength - a.strength)
     .slice(0, 2);
 
-  const calculatePosition = (pair: typeof CURRENCY_PAIRS[0]) => {
+  const handleManualUpdate = async () => {
+    setIsUpdating(true);
+    try {
+      await updateForexData();
+      await runAIAnalysis();
+      toast({
+        title: "Data Updated",
+        description: "Successfully refreshed forex data and AI analysis",
+      });
+    } catch (err) {
+      toast({
+        title: "Update Failed",
+        description: "Failed to update data. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  useEffect(() => {
+    // Show toast for new high-priority notifications
+    const highPriorityNotifications = notifications.filter(
+      n => !n.is_read && n.priority >= 4
+    );
+    
+    if (highPriorityNotifications.length > 0) {
+      const latest = highPriorityNotifications[0];
+      toast({
+        title: latest.title,
+        description: latest.message,
+      });
+    }
+  }, [notifications]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background p-6 flex items-center justify-center">
+        <div className="text-center">
+          <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading forex data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background p-6 flex items-center justify-center">
+        <Card className="max-w-md">
+          <CardHeader>
+            <CardTitle className="text-destructive">Error Loading Data</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground mb-4">{error}</p>
+            <Button onClick={handleManualUpdate} disabled={isUpdating}>
+              {isUpdating ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : null}
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const calculatePosition = (pair: any) => {
     const balanceNum = parseFloat(balance) || 0;
     const riskPercentNum = parseFloat(riskPercent) || 0;
     const riskAmount = (balanceNum * riskPercentNum) / 100;
@@ -66,10 +134,33 @@ export default function TradingDashboard() {
             <h1 className="text-3xl font-bold">AI Forex Trading Bot</h1>
             <p className="text-muted-foreground">Advanced forex analysis and signal generation</p>
           </div>
-          <Button variant="outline" size="sm">
-            <Bell className="w-4 h-4 mr-2" />
-            Notifications
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleManualUpdate}
+              disabled={isUpdating}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isUpdating ? 'animate-spin' : ''}`} />
+              Update Data
+            </Button>
+            <Button variant="outline" size="sm" className="relative">
+              {unreadCount > 0 ? (
+                <BellRing className="w-4 h-4 mr-2 text-trading-gold animate-pulse" />
+              ) : (
+                <Bell className="w-4 h-4 mr-2" />
+              )}
+              Notifications
+              {unreadCount > 0 && (
+                <Badge 
+                  variant="destructive" 
+                  className="absolute -top-2 -right-2 px-1 py-0 text-xs"
+                >
+                  {unreadCount}
+                </Badge>
+              )}
+            </Button>
+          </div>
         </div>
 
         {/* Top Focus Pairs */}
@@ -85,11 +176,16 @@ export default function TradingDashboard() {
               <CardContent>
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <div className="text-2xl font-bold">{pair.price}</div>
-                    <div className={`flex items-center ${pair.change >= 0 ? 'text-trading-buy' : 'text-trading-sell'}`}>
-                      {pair.change >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
-                      {pair.change > 0 ? '+' : ''}{pair.change} ({pair.changePercent}%)
+                    <div className="text-2xl font-bold">{Number(pair.price).toFixed(pair.symbol === 'USDJPY' ? 2 : 4)}</div>
+                    <div className={`flex items-center ${pair.change_value >= 0 ? 'text-trading-buy' : 'text-trading-sell'}`}>
+                      {pair.change_value >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
+                      {pair.change_value > 0 ? '+' : ''}{Number(pair.change_value).toFixed(4)} ({Number(pair.change_percent).toFixed(2)}%)
                     </div>
+                    {pair.pattern && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Pattern: {pair.pattern}
+                      </div>
+                    )}
                   </div>
                   <div className="text-right">
                     <div className="text-sm text-muted-foreground">Signal Strength</div>
@@ -120,9 +216,9 @@ export default function TradingDashboard() {
                   <Target className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{CURRENCY_PAIRS.filter(p => p.signal !== "NEUTRAL").length}</div>
+                  <div className="text-2xl font-bold">{currencyPairs.filter(p => p.signal !== "NEUTRAL").length}</div>
                   <p className="text-xs text-muted-foreground">
-                    {CURRENCY_PAIRS.filter(p => p.signal === "BUY").length} Buy, {CURRENCY_PAIRS.filter(p => p.signal === "SELL").length} Sell signals
+                    {currencyPairs.filter(p => p.signal === "BUY").length} Buy, {currencyPairs.filter(p => p.signal === "SELL").length} Sell signals
                   </p>
                 </CardContent>
               </Card>
@@ -134,7 +230,7 @@ export default function TradingDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {Math.round(CURRENCY_PAIRS.reduce((acc, p) => acc + p.strength, 0) / CURRENCY_PAIRS.length)}%
+                    {currencyPairs.length > 0 ? Math.round(currencyPairs.reduce((acc, p) => acc + p.strength, 0) / currencyPairs.length) : 0}%
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Market confidence level
@@ -149,7 +245,7 @@ export default function TradingDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-trading-gold">
-                    {CURRENCY_PAIRS.find(p => p.symbol === "XAUUSD")?.strength}%
+                    {currencyPairs.find(p => p.symbol === "XAUUSD")?.strength || 0}%
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Gold signal strength
@@ -226,7 +322,7 @@ export default function TradingDashboard() {
 
           <TabsContent value="signals" className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {CURRENCY_PAIRS.map((pair) => (
+              {currencyPairs.map((pair) => (
                 <Card key={pair.symbol}>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">{pair.symbol}</CardTitle>
@@ -235,9 +331,9 @@ export default function TradingDashboard() {
                   <CardContent>
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-lg font-bold">{pair.price}</span>
-                        <span className={`text-sm ${pair.change >= 0 ? 'text-trading-buy' : 'text-trading-sell'}`}>
-                          {pair.change > 0 ? '+' : ''}{pair.changePercent}%
+                        <span className="text-lg font-bold">{Number(pair.price).toFixed(pair.symbol === 'USDJPY' ? 2 : 4)}</span>
+                        <span className={`text-sm ${pair.change_value >= 0 ? 'text-trading-buy' : 'text-trading-sell'}`}>
+                          {pair.change_value > 0 ? '+' : ''}{Number(pair.change_percent).toFixed(2)}%
                         </span>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -254,15 +350,47 @@ export default function TradingDashboard() {
           </TabsContent>
         </Tabs>
 
+        {/* Recent Notifications */}
+        {notifications.slice(0, 3).map((notification) => (
+          <Card key={notification.id} className={`${
+            notification.priority >= 4 ? 'border-trading-gold bg-trading-gold/5' : 'border-border'
+          } ${notification.is_read ? 'opacity-60' : ''}`}>
+            <CardContent className="flex items-center justify-between p-4">
+              <div className="flex items-center">
+                <AlertCircle className={`w-5 h-5 mr-3 ${
+                  notification.type === 'signal' ? 'text-trading-gold' : 
+                  notification.type === 'alert' ? 'text-destructive' : 'text-muted-foreground'
+                }`} />
+                <div>
+                  <div className="font-medium">{notification.title}</div>
+                  <div className="text-sm text-muted-foreground">{notification.message}</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {new Date(notification.created_at).toLocaleTimeString()}
+                  </div>
+                </div>
+              </div>
+              {!notification.is_read && (
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => markNotificationAsRead(notification.id)}
+                >
+                  Mark Read
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        ))}
+
         {/* Alert for XAUUSD */}
-        {CURRENCY_PAIRS.find(p => p.symbol === "XAUUSD")?.strength && CURRENCY_PAIRS.find(p => p.symbol === "XAUUSD")!.strength > 90 && (
+        {currencyPairs.find(p => p.symbol === "XAUUSD")?.strength && currencyPairs.find(p => p.symbol === "XAUUSD")!.strength > 90 && (
           <Card className="border-trading-gold bg-trading-gold/5">
             <CardContent className="flex items-center p-4">
               <AlertCircle className="w-5 h-5 text-trading-gold mr-3" />
               <div>
                 <div className="font-medium">High Confidence XAUUSD Signal</div>
                 <div className="text-sm text-muted-foreground">
-                  Gold showing {CURRENCY_PAIRS.find(p => p.symbol === "XAUUSD")?.strength}% signal strength - Consider this setup
+                  Gold showing {currencyPairs.find(p => p.symbol === "XAUUSD")?.strength}% signal strength - Consider this setup
                 </div>
               </div>
             </CardContent>

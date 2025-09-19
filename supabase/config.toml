@@ -1,1 +1,7 @@
 project_id = "zdewrrdxlvksbflasevr"
+
+[functions.fetch-forex-data]
+verify_jwt = false
+
+[functions.ai-analysis]
+verify_jwt = false
