@@ -14,7 +14,165 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      currency_pairs: {
+        Row: {
+          ask: number | null
+          bid: number | null
+          change_percent: number
+          change_value: number
+          created_at: string
+          id: string
+          last_updated: string
+          name: string
+          price: number
+          spread: number | null
+          symbol: string
+        }
+        Insert: {
+          ask?: number | null
+          bid?: number | null
+          change_percent?: number
+          change_value?: number
+          created_at?: string
+          id?: string
+          last_updated?: string
+          name: string
+          price?: number
+          spread?: number | null
+          symbol: string
+        }
+        Update: {
+          ask?: number | null
+          bid?: number | null
+          change_percent?: number
+          change_value?: number
+          created_at?: string
+          id?: string
+          last_updated?: string
+          name?: string
+          price?: number
+          spread?: number | null
+          symbol?: string
+        }
+        Relationships: []
+      }
+      market_analysis: {
+        Row: {
+          analysis_type: string
+          confidence_score: number
+          created_at: string
+          data: Json
+          id: string
+          symbol: string
+          timeframe: string
+        }
+        Insert: {
+          analysis_type: string
+          confidence_score?: number
+          created_at?: string
+          data: Json
+          id?: string
+          symbol: string
+          timeframe?: string
+        }
+        Update: {
+          analysis_type?: string
+          confidence_score?: number
+          created_at?: string
+          data?: Json
+          id?: string
+          symbol?: string
+          timeframe?: string
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          created_at: string
+          data: Json | null
+          id: string
+          is_read: boolean
+          message: string
+          priority: number
+          symbol: string | null
+          title: string
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          data?: Json | null
+          id?: string
+          is_read?: boolean
+          message: string
+          priority?: number
+          symbol?: string | null
+          title: string
+          type: string
+        }
+        Update: {
+          created_at?: string
+          data?: Json | null
+          id?: string
+          is_read?: boolean
+          message?: string
+          priority?: number
+          symbol?: string | null
+          title?: string
+          type?: string
+        }
+        Relationships: []
+      }
+      trading_signals: {
+        Row: {
+          analysis_data: Json | null
+          confidence: number
+          created_at: string
+          expires_at: string | null
+          id: string
+          is_active: boolean
+          pattern_detected: string | null
+          risk_reward_ratio: number | null
+          signal_type: string
+          stop_loss: number | null
+          strength: number
+          symbol: string
+          take_profit: number | null
+          timeframe: string | null
+        }
+        Insert: {
+          analysis_data?: Json | null
+          confidence?: number
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          pattern_detected?: string | null
+          risk_reward_ratio?: number | null
+          signal_type: string
+          stop_loss?: number | null
+          strength: number
+          symbol: string
+          take_profit?: number | null
+          timeframe?: string | null
+        }
+        Update: {
+          analysis_data?: Json | null
+          confidence?: number
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          pattern_detected?: string | null
+          risk_reward_ratio?: number | null
+          signal_type?: string
+          stop_loss?: number | null
+          strength?: number
+          symbol?: string
+          take_profit?: number | null
+          timeframe?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
