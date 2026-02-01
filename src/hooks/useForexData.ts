@@ -49,7 +49,7 @@ export const useForexData = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      
+
       // Fetch currency pairs
       const { data: pairs, error: pairsError } = await supabase
         .from('currency_pairs')
@@ -91,147 +91,173 @@ export const useForexData = () => {
 
   const updateForexData = async () => {
     try {
-      const response = await supabase.functions.invoke('fetch-forex-data');
+      console.log('Updating forex data via Edge Function...');
+      const response = await supabase.functions.invoke('fetch-forex-data', {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
       if (response.error) {
         throw response.error;
       }
       console.log('Forex data updated:', response.data);
+      await fetchData(); // Refresh data after update
+      return { success: true };
     } catch (err) {
       console.error('Error updating forex data:', err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to update forex data'
+      };
     }
   };
 
   const runAIAnalysis = async () => {
     try {
-      const response = await supabase.functions.invoke('ai-analysis');
+      console.log('Running AI analysis via Edge Function...');
+      const response = await supabase.functions.invoke('ai-analysis', {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
       if (response.error) {
         throw response.error;
       }
       console.log('AI analysis completed:', response.data);
+      await fetchData(); // Refresh data after analysis
+      return { success: true };
     } catch (err) {
       console.error('Error running AI analysis:', err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to run AI analysis'
+      };
     }
   };
 
   const markNotificationAsRead = async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('id', id);
+  try {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('id', id);
 
-      if (error) throw error;
+    if (error) throw error;
 
-      setNotifications(prev => 
-        prev.map(notif => 
-          notif.id === id ? { ...notif, is_read: true } : notif
-        )
-      );
-    } catch (err) {
-      console.error('Error marking notification as read:', err);
-    }
-  };
+    setNotifications(prev =>
+      prev.map(notif =>
+        notif.id === id ? { ...notif, is_read: true } : notif
+      )
+    );
+  } catch (err) {
+    console.error('Error marking notification as read:', err);
+  }
+};
 
-  useEffect(() => {
-    fetchData();
+useEffect(() => {
+  fetchData();
 
-    // Set up real-time subscriptions
-    const currencyPairsChannel = supabase
-      .channel('currency_pairs_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'currency_pairs'
-        },
-        (payload) => {
-          console.log('Currency pair updated:', payload);
-          setCurrencyPairs(prev => 
-            prev.map(pair => 
-              pair.id === payload.new.id ? payload.new as CurrencyPair : pair
+  // Set up real-time subscriptions
+  const currencyPairsChannel = supabase
+    .channel('currency_pairs_changes')
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'currency_pairs'
+      },
+      (payload) => {
+        console.log('Currency pair updated:', payload);
+        setCurrencyPairs(prev =>
+          prev.map(pair =>
+            pair.id === payload.new.id ? payload.new as CurrencyPair : pair
+          )
+        );
+      }
+    )
+    .subscribe();
+
+  const signalsChannel = supabase
+    .channel('signals_changes')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'trading_signals'
+      },
+      (payload) => {
+        console.log('Trading signal updated:', payload);
+        if (payload.eventType === 'INSERT') {
+          setSignals(prev => [payload.new as TradingSignal, ...prev]);
+        } else if (payload.eventType === 'UPDATE') {
+          setSignals(prev =>
+            prev.map(signal =>
+              signal.id === payload.new.id ? payload.new as TradingSignal : signal
             )
           );
         }
-      )
-      .subscribe();
+      }
+    )
+    .subscribe();
 
-    const signalsChannel = supabase
-      .channel('signals_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'trading_signals'
-        },
-        (payload) => {
-          console.log('Trading signal updated:', payload);
-          if (payload.eventType === 'INSERT') {
-            setSignals(prev => [payload.new as TradingSignal, ...prev]);
-          } else if (payload.eventType === 'UPDATE') {
-            setSignals(prev => 
-              prev.map(signal => 
-                signal.id === payload.new.id ? payload.new as TradingSignal : signal
-              )
-            );
-          }
-        }
-      )
-      .subscribe();
+  const notificationsChannel = supabase
+    .channel('notifications_changes')
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications'
+      },
+      (payload) => {
+        console.log('New notification:', payload);
+        setNotifications(prev => [payload.new as Notification, ...prev]);
+      }
+    )
+    .subscribe();
 
-    const notificationsChannel = supabase
-      .channel('notifications_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications'
-        },
-        (payload) => {
-          console.log('New notification:', payload);
-          setNotifications(prev => [payload.new as Notification, ...prev]);
-        }
-      )
-      .subscribe();
+  // Auto-refresh data every 30 seconds
+  // Disabled temporarily due to connection issues
+  // You can manually call updateForexData() and runAIAnalysis() when needed
+  /*
+  const interval = setInterval(() => {
+    updateForexData();
+    runAIAnalysis();
+  }, 30000);
+  */
 
-    // Auto-refresh data every 30 seconds
-    const interval = setInterval(() => {
-      updateForexData();
-      runAIAnalysis();
-    }, 30000);
-
-    return () => {
-      clearInterval(interval);
-      supabase.removeChannel(currencyPairsChannel);
-      supabase.removeChannel(signalsChannel);
-      supabase.removeChannel(notificationsChannel);
-    };
-  }, []);
-
-  // Combine currency pairs with their signals
-  const enrichedPairs = currencyPairs.map(pair => {
-    const signal = signals.find(s => s.symbol === pair.symbol && s.is_active);
-    return {
-      ...pair,
-      signal: signal?.signal_type || 'NEUTRAL',
-      strength: signal?.strength || 0,
-      pattern: signal?.pattern_detected,
-      stopLoss: signal?.stop_loss,
-      takeProfit: signal?.take_profit
-    };
-  });
-
-  return {
-    currencyPairs: enrichedPairs,
-    signals,
-    notifications,
-    loading,
-    error,
-    updateForexData,
-    runAIAnalysis,
-    markNotificationAsRead,
-    unreadCount: notifications.filter(n => !n.is_read).length
+  return () => {
+    // clearInterval(interval); // Commented out since interval is disabled
+    supabase.removeChannel(currencyPairsChannel);
+    supabase.removeChannel(signalsChannel);
+    supabase.removeChannel(notificationsChannel);
   };
+}, []);
+
+// Combine currency pairs with their signals
+const enrichedPairs = currencyPairs.map(pair => {
+  const signal = signals.find(s => s.symbol === pair.symbol && s.is_active);
+  return {
+    ...pair,
+    signal: signal?.signal_type || 'NEUTRAL',
+    strength: signal?.strength || 0,
+    pattern: signal?.pattern_detected,
+    stopLoss: signal?.stop_loss,
+    takeProfit: signal?.take_profit
+  };
+});
+
+return {
+  currencyPairs: enrichedPairs,
+  signals,
+  notifications,
+  loading,
+  error,
+  updateForexData,
+  runAIAnalysis,
+  markNotificationAsRead,
+  unreadCount: notifications.filter(n => !n.is_read).length
+};
 };

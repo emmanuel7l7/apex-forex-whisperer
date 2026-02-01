@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Bell, TrendingUp, TrendingDown, Calculator, Target, AlertCircle, RefreshCw, BellRing } from "lucide-react";
 import { useForexData } from "@/hooks/useForexData";
 import { toast } from "@/components/ui/use-toast";
@@ -30,16 +31,17 @@ export default function TradingDashboard() {
   const [balance, setBalance] = useState("10000");
   const [riskPercent, setRiskPercent] = useState("2");
   const [isUpdating, setIsUpdating] = useState(false);
-  
-  const { 
-    currencyPairs, 
-    notifications, 
-    loading, 
-    error, 
-    updateForexData, 
-    runAIAnalysis, 
+  const [showConnectionWarning, setShowConnectionWarning] = useState(false);
+
+  const {
+    currencyPairs,
+    notifications,
+    loading,
+    error,
+    updateForexData,
+    runAIAnalysis,
     markNotificationAsRead,
-    unreadCount 
+    unreadCount
   } = useForexData();
 
   // Focus on top 2 pairs with highest signal strength
@@ -49,17 +51,34 @@ export default function TradingDashboard() {
 
   const handleManualUpdate = async () => {
     setIsUpdating(true);
+    setShowConnectionWarning(false);
     try {
-      await updateForexData();
-      await runAIAnalysis();
-      toast({
-        title: "Data Updated",
-        description: "Successfully refreshed forex data and AI analysis",
-      });
+      const forexResult = await updateForexData();
+      const aiResult = await runAIAnalysis();
+
+      // Check if either operation failed
+      if (!forexResult.success || !aiResult.success) {
+        const errors = [];
+        if (!forexResult.success) errors.push('Forex data update failed');
+        if (!aiResult.success) errors.push('AI analysis failed');
+
+        setShowConnectionWarning(true);
+        toast({
+          title: "Partial Update",
+          description: `${errors.join(', ')}. Your Supabase project may be paused or unreachable. Data shown is from database cache.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Data Updated",
+          description: "Successfully refreshed forex data and AI analysis",
+        });
+      }
     } catch (err) {
+      setShowConnectionWarning(true);
       toast({
-        title: "Update Failed",
-        description: "Failed to update data. Please try again.",
+        title: "Connection Error",
+        description: "Cannot reach Supabase. Check your network connection or VPN settings.",
         variant: "destructive",
       });
     } finally {
@@ -72,7 +91,7 @@ export default function TradingDashboard() {
     const highPriorityNotifications = notifications.filter(
       n => !n.is_read && n.priority >= 4
     );
-    
+
     if (highPriorityNotifications.length > 0) {
       const latest = highPriorityNotifications[0];
       toast({
@@ -116,18 +135,35 @@ export default function TradingDashboard() {
     const balanceNum = parseFloat(balance) || 0;
     const riskPercentNum = parseFloat(riskPercent) || 0;
     const riskAmount = (balanceNum * riskPercentNum) / 100;
-    
+
     // Simplified calculation - in real implementation would use proper forex calculations
     const lotSize = (riskAmount / 100).toFixed(2);
     const stopLoss = pair.signal === "BUY" ? (pair.price * 0.995).toFixed(4) : (pair.price * 1.005).toFixed(4);
     const takeProfit = pair.signal === "BUY" ? (pair.price * 1.015).toFixed(4) : (pair.price * 0.985).toFixed(4);
-    
+
     return { lotSize, stopLoss, takeProfit, riskAmount: riskAmount.toFixed(2) };
   };
 
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto space-y-6">
+        {/* Connection Warning */}
+        {showConnectionWarning && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Connection Issue Detected</AlertTitle>
+            <AlertDescription>
+              Cannot reach Supabase Edge Functions. Possible causes:
+              <ul className="list-disc list-inside mt-2 text-sm">
+                <li>Your Supabase project may be paused (free tier auto-pauses after inactivity)</li>
+                <li>VPN or proxy is blocking the connection</li>
+                <li>Network firewall restrictions</li>
+              </ul>
+              <p className="mt-2 font-semibold">Solution: Visit <a href="https://app.supabase.com" target="_blank" rel="noopener noreferrer" className="underline">app.supabase.com</a> and check if your project is active.</p>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -135,9 +171,9 @@ export default function TradingDashboard() {
             <p className="text-muted-foreground">Advanced forex analysis and signal generation</p>
           </div>
           <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handleManualUpdate}
               disabled={isUpdating}
             >
@@ -152,8 +188,8 @@ export default function TradingDashboard() {
               )}
               Notifications
               {unreadCount > 0 && (
-                <Badge 
-                  variant="destructive" 
+                <Badge
+                  variant="destructive"
                   className="absolute -top-2 -right-2 px-1 py-0 text-xs"
                 >
                   {unreadCount}
@@ -222,7 +258,7 @@ export default function TradingDashboard() {
                   </p>
                 </CardContent>
               </Card>
-              
+
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Avg Signal Strength</CardTitle>
@@ -284,7 +320,7 @@ export default function TradingDashboard() {
                     />
                   </div>
                 </div>
-                
+
                 <div className="space-y-4">
                   {topPairs.map((pair) => {
                     const calc = calculatePosition(pair);
@@ -352,15 +388,13 @@ export default function TradingDashboard() {
 
         {/* Recent Notifications */}
         {notifications.slice(0, 3).map((notification) => (
-          <Card key={notification.id} className={`${
-            notification.priority >= 4 ? 'border-trading-gold bg-trading-gold/5' : 'border-border'
-          } ${notification.is_read ? 'opacity-60' : ''}`}>
+          <Card key={notification.id} className={`${notification.priority >= 4 ? 'border-trading-gold bg-trading-gold/5' : 'border-border'
+            } ${notification.is_read ? 'opacity-60' : ''}`}>
             <CardContent className="flex items-center justify-between p-4">
               <div className="flex items-center">
-                <AlertCircle className={`w-5 h-5 mr-3 ${
-                  notification.type === 'signal' ? 'text-trading-gold' : 
-                  notification.type === 'alert' ? 'text-destructive' : 'text-muted-foreground'
-                }`} />
+                <AlertCircle className={`w-5 h-5 mr-3 ${notification.type === 'signal' ? 'text-trading-gold' :
+                    notification.type === 'alert' ? 'text-destructive' : 'text-muted-foreground'
+                  }`} />
                 <div>
                   <div className="font-medium">{notification.title}</div>
                   <div className="text-sm text-muted-foreground">{notification.message}</div>
@@ -370,8 +404,8 @@ export default function TradingDashboard() {
                 </div>
               </div>
               {!notification.is_read && (
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   size="sm"
                   onClick={() => markNotificationAsRead(notification.id)}
                 >
